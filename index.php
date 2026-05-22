@@ -297,14 +297,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <div id="forgot-form-container">
             <h3 style="color:#fff; margin-bottom:0.5rem; text-align:center;">Recuperar Contraseña</h3>
-            <p class="text-muted text-center text-sm" style="margin-bottom:1.5rem;">Ingresa el correo electrónico asociado a tu cuenta. Te enviaremos un enlace para restablecerla.</p>
+            <p class="text-muted text-center text-sm" style="margin-bottom:1.5rem;">Ingresa tu nombre de usuario. Te enviaremos un enlace de recuperación al correo asociado a tu cuenta.</p>
             
             <form id="forgot-form" onsubmit="event.preventDefault(); submitForgot();">
                 <div class="login-field">
-                    <label for="forgot-email">Correo Electrónico</label>
+                    <label for="forgot-username">Usuario</label>
                     <div class="input-wrap">
-                        <input type="email" id="forgot-email" placeholder="ejemplo@correo.com" required>
-                        <i class="fas fa-envelope"></i>
+                        <input type="text" id="forgot-username" placeholder="Tu nombre de usuario" required>
+                        <i class="fas fa-user"></i>
                     </div>
                 </div>
                 <button type="submit" class="login-btn" id="forgot-btn">
@@ -331,14 +331,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     async function submitForgot() {
         const btn = document.getElementById('forgot-btn');
         const msgDiv = document.getElementById('forgot-msg');
-        const email = document.getElementById('forgot-email').value;
+        const username = document.getElementById('forgot-username').value;
 
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> &nbsp;Enviando...';
 
         try {
             const fd = new FormData();
-            fd.append('email', email);
+            fd.append('username', username);
             fd.append('csrf_token', '<?= $csrfToken ?>');
             
             const res = await fetch('api.php?module=auth&action=forgot_password', {
@@ -351,7 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (data.success) {
                 msgDiv.style.color = '#10b981'; // success
                 msgDiv.innerHTML = '<i class="fas fa-check-circle"></i> ' + data.message;
-                document.getElementById('forgot-email').value = '';
+                document.getElementById('forgot-username').value = '';
             } else {
                 msgDiv.style.color = '#ef4444'; // danger
                 msgDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' + (data.error || 'Error al enviar');
@@ -359,7 +359,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (e) {
             msgDiv.style.display = 'block';
             msgDiv.style.color = '#ef4444';
-            msgDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error de conexión';
+            msgDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error de conexión (Asegúrate de configurar los correos)';
         }
 
         btn.disabled = false;

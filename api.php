@@ -627,22 +627,23 @@ use PHPMailer\PHPMailer\Exception;
 function handleAuth(PDO $pdo, string $action) {
     switch ($action) {
         case 'forgot_password':
-            $email = trim($_POST['email'] ?? '');
-            if (!$email) {
-                echo json_encode(['error' => 'Debe proporcionar un correo electrónico.']);
+            $username = trim($_POST['username'] ?? '');
+            if (!$username) {
+                echo json_encode(['error' => 'Debe proporcionar un nombre de usuario.']);
                 return;
             }
 
-            $stmt = $pdo->prepare("SELECT id, nombre FROM usuarios WHERE email=? AND activo=1");
-            $stmt->execute([$email]);
+            $stmt = $pdo->prepare("SELECT id, nombre, email FROM usuarios WHERE username=? AND activo=1");
+            $stmt->execute([$username]);
             $user = $stmt->fetch();
 
-            if (!$user) {
-                // Return success to prevent email enumeration attacks
-                echo json_encode(['success' => true, 'message' => 'Si el correo existe, se ha enviado un enlace.']);
+            if (!$user || empty($user['email'])) {
+                // Return success to prevent enumeration attacks, but we can return an error if it's an internal tool.
+                echo json_encode(['success' => true, 'message' => 'Si el usuario existe y tiene correo, se ha enviado un enlace.']);
                 return;
             }
 
+            $email = $user['email'];
             $token = bin2hex(random_bytes(32));
             $expiry = date('Y-m-d H:i:s', strtotime('+1 hour'));
 
