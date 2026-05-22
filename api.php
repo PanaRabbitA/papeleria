@@ -71,7 +71,7 @@ function handleDashboard(PDO $pdo, string $action) {
     $stats['stock_bajo'] = (int)$pdo->query("SELECT COUNT(*) FROM productos WHERE activo=1 AND stock <= stock_minimo")->fetchColumn();
 
     // Today's sales
-    $stmt = $pdo->query("SELECT COUNT(*) as total_ventas, COALESCE(SUM(total),0) as ingresos FROM ventas WHERE DATE(created_at)=CURDATE() AND estado='completada'");
+    $stmt = $pdo->query("SELECT COUNT(*) as total_ventas, COALESCE(SUM(total),0) as ingresos FROM ventas WHERE DATE(created_at)=CURRENT_DATE AND estado='completada'");
     $row = $stmt->fetch();
     $stats['ventas_hoy']   = (int)$row['total_ventas'];
     $stats['ingresos_hoy'] = (float)$row['ingresos'];
@@ -607,8 +607,8 @@ function handleConfiguracion(PDO $pdo, string $action) {
             Auth::requireAdmin();
             $logo = $_POST['logo'] ?? '';
             // Insert or Update the logo
-            $stmt = $pdo->prepare("INSERT INTO configuracion (clave, valor) VALUES ('papeleria_logo', ?) ON DUPLICATE KEY UPDATE valor = ?");
-            $stmt->execute([$logo, $logo]);
+            $stmt = $pdo->prepare("INSERT INTO configuracion (clave, valor) VALUES ('papeleria_logo', ?) ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor");
+            $stmt->execute([$logo]);
             echo json_encode(['success' => true, 'message' => 'Logo actualizado exitosamente.']);
             break;
 

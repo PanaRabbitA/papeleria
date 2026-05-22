@@ -5,6 +5,7 @@
  * 
  * Uses PDO with prepared statements for SQL injection prevention.
  * Automatically creates database, tables, and sample data on first run.
+ * Adapted for PostgreSQL.
  */
 
 function get_env_var($key, $default = '') {
@@ -15,29 +16,23 @@ function get_env_var($key, $default = '') {
     return $default;
 }
 
-$mysql_url = get_env_var('MYSQL_URL');
-if ($mysql_url) {
-    $parsed = parse_url($mysql_url);
+$db_url = get_env_var('DATABASE_URL');
+if ($db_url) {
+    $parsed = parse_url($db_url);
     define('DB_HOST', $parsed['host']);
-    
-    // Fix Railway's internal bug where it fails to expand MYSQLUSER reference
-    $user = $parsed['user'] ?? 'root';
-    if (strpos($user, '${') !== false) {
-        $user = 'root';
-    }
+    $user = $parsed['user'] ?? 'postgres';
     define('DB_USER', $user);
-    
     define('DB_PASS', $parsed['pass'] ?? '');
     define('DB_NAME', ltrim($parsed['path'], '/'));
-    define('DB_PORT', $parsed['port'] ?? '3306');
+    define('DB_PORT', $parsed['port'] ?? '5432');
 } else {
-    define('DB_HOST', get_env_var('MYSQLHOST', 'localhost'));
-    define('DB_USER', get_env_var('MYSQLUSER', 'root'));
-    define('DB_PASS', get_env_var('MYSQLPASSWORD', ''));
-    define('DB_NAME', get_env_var('MYSQLDATABASE', 'papeleria_admin'));
-    define('DB_PORT', get_env_var('MYSQLPORT', '3306'));
+    define('DB_HOST', get_env_var('PGHOST', 'localhost'));
+    define('DB_USER', get_env_var('PGUSER', 'postgres'));
+    define('DB_PASS', get_env_var('PGPASSWORD', ''));
+    define('DB_NAME', get_env_var('PGDATABASE', 'papeleria_admin'));
+    define('DB_PORT', get_env_var('PGPORT', '5432'));
 }
-define('DB_CHARSET', 'utf8mb4');
+define('DB_CHARSET', 'utf8');
 
 class Database {
     private static $instance = null;
@@ -45,20 +40,14 @@ class Database {
 
     private function __construct() {
         try {
-            // Connect without database first to create it if needed
-            $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";charset=" . DB_CHARSET;
+            $dsn = "pgsql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME;
             $options = [
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE  => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES    => false,
             ];
 
-            $tempPdo = new PDO($dsn, DB_USER, DB_PASS, $options);
-            $tempPdo->exec("CREATE DATABASE IF NOT EXISTS `" . DB_NAME . "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-            $tempPdo = null;
-
             // Connect to the database
-            $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
             $this->pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
 
             // Initialize tables and run migrations
@@ -93,36 +82,32 @@ class Database {
         // Create configuracion table
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS configuracion (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 clave VARCHAR(50) UNIQUE NOT NULL,
-                valor LONGTEXT NULL
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                valor TEXT NULL
+            )
         ");
-        $this->pdo->exec("INSERT IGNORE INTO configuracion (clave, valor) VALUES ('papeleria_logo', '')");
+        $this->pdo->exec("INSERT INTO configuracion (clave, valor) VALUES ('papeleria_logo', '') ON CONFLICT (clave) DO NOTHING");
         
         // Add imagen column if it doesn't exist
-        $stmt = $this->pdo->query("SHOW TABLES LIKE 'productos'");
-        if ($stmt->rowCount() > 0) {
-            $stmt = $this->pdo->query("SHOW COLUMNS FROM productos LIKE 'imagen'");
-            if ($stmt->rowCount() == 0) {
-                $this->pdo->exec("ALTER TABLE productos ADD COLUMN imagen LONGTEXT NULL");
-            }
+        $stmt = $this->pdo->query("SELECT column_name FROM information_schema.columns WHERE table_name='productos' AND column_name='imagen'");
+        if ($stmt->rowCount() == 0) {
+            try { $this->pdo->exec("ALTER TABLE productos ADD COLUMN imagen TEXT NULL"); } catch(Exception $e) {}
         }
         
         // Add email and token columns to usuarios if they don't exist
-        $stmt = $this->pdo->query("SHOW TABLES LIKE 'usuarios'");
-        if ($stmt->rowCount() > 0) {
-            $stmt = $this->pdo->query("SHOW COLUMNS FROM usuarios LIKE 'email'");
-            if ($stmt->rowCount() == 0) {
+        $stmt = $this->pdo->query("SELECT column_name FROM information_schema.columns WHERE table_name='usuarios' AND column_name='email'");
+        if ($stmt->rowCount() == 0) {
+            try {
                 $this->pdo->exec("ALTER TABLE usuarios ADD COLUMN email VARCHAR(100) UNIQUE NULL");
                 $this->pdo->exec("ALTER TABLE usuarios ADD COLUMN reset_token VARCHAR(64) NULL");
-                $this->pdo->exec("ALTER TABLE usuarios ADD COLUMN reset_token_expiry DATETIME NULL");
-            }
+                $this->pdo->exec("ALTER TABLE usuarios ADD COLUMN reset_token_expiry TIMESTAMP NULL");
+            } catch(Exception $e) {}
         }
     }
 
     private function initializeTables() {
-        $stmt = $this->pdo->query("SHOW TABLES LIKE 'usuarios'");
+        $stmt = $this->pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='usuarios'");
         if ($stmt->rowCount() > 0) {
             return; // Already initialized
         }
@@ -130,50 +115,50 @@ class Database {
         // ── Create Tables ──────────────────────────────────────────
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS usuarios (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
                 email VARCHAR(100) UNIQUE NULL,
                 nombre VARCHAR(100) NOT NULL,
-                rol ENUM('admin', 'vendedor') DEFAULT 'vendedor',
-                activo TINYINT(1) DEFAULT 1,
+                rol VARCHAR(20) DEFAULT 'vendedor',
+                activo SMALLINT DEFAULT 1,
                 intentos_fallidos INT DEFAULT 0,
-                ultimo_intento DATETIME NULL,
+                ultimo_intento TIMESTAMP NULL,
                 reset_token VARCHAR(64) NULL,
-                reset_token_expiry DATETIME NULL,
+                reset_token_expiry TIMESTAMP NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         ");
 
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS categorias (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 nombre VARCHAR(100) NOT NULL,
                 descripcion TEXT,
-                activo TINYINT(1) DEFAULT 1,
+                activo SMALLINT DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         ");
 
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS proveedores (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 nombre VARCHAR(150) NOT NULL,
                 contacto VARCHAR(100),
                 telefono VARCHAR(20),
                 email VARCHAR(100),
                 direccion TEXT,
-                activo TINYINT(1) DEFAULT 1,
+                activo SMALLINT DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         ");
 
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS productos (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 codigo VARCHAR(50) UNIQUE NOT NULL,
                 nombre VARCHAR(150) NOT NULL,
                 descripcion TEXT,
@@ -183,48 +168,48 @@ class Database {
                 precio_venta DECIMAL(10,2) NOT NULL,
                 stock INT DEFAULT 0,
                 stock_minimo INT DEFAULT 5,
-                imagen LONGTEXT NULL,
-                activo TINYINT(1) DEFAULT 1,
+                imagen TEXT NULL,
+                activo SMALLINT DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL,
                 FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            )
         ");
 
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS clientes (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 nombre VARCHAR(150) NOT NULL,
                 telefono VARCHAR(20),
                 email VARCHAR(100),
                 direccion TEXT,
-                activo TINYINT(1) DEFAULT 1,
+                activo SMALLINT DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         ");
 
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS ventas (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 folio VARCHAR(20) UNIQUE NOT NULL,
                 cliente_id INT NULL,
                 usuario_id INT NOT NULL,
                 subtotal DECIMAL(10,2) NOT NULL,
                 iva DECIMAL(10,2) NOT NULL DEFAULT 0,
                 total DECIMAL(10,2) NOT NULL,
-                metodo_pago ENUM('efectivo','tarjeta','transferencia') DEFAULT 'efectivo',
-                estado ENUM('completada','cancelada') DEFAULT 'completada',
+                metodo_pago VARCHAR(20) DEFAULT 'efectivo',
+                estado VARCHAR(20) DEFAULT 'completada',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE SET NULL,
                 FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            )
         ");
 
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS detalle_ventas (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 venta_id INT NOT NULL,
                 producto_id INT NOT NULL,
                 cantidad INT NOT NULL,
@@ -232,19 +217,19 @@ class Database {
                 subtotal DECIMAL(10,2) NOT NULL,
                 FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE,
                 FOREIGN KEY (producto_id) REFERENCES productos(id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            )
         ");
 
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS sesiones_log (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 usuario_id INT NOT NULL,
                 ip_address VARCHAR(45),
                 user_agent TEXT,
-                accion ENUM('login','logout','login_fallido') NOT NULL,
+                accion VARCHAR(20) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            )
         ");
 
         // ── Insert Sample Data ─────────────────────────────────────
