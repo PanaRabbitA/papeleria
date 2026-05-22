@@ -1579,25 +1579,50 @@ function onScanSuccess(code) {
     const product = products.find(p => p.codigo.toLowerCase() === code.toLowerCase());
 
     if (product) {
-        resultDiv.style.display = 'block';
-        resultDiv.style.background = 'var(--success-bg)';
-        resultDiv.style.color = 'var(--success)';
-        resultDiv.innerHTML = `<i class="fas fa-check-circle"></i> ${escapeHtml(product.nombre)} — ${formatMoney(product.precio_venta)}`;
+        // Play success beep
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        } catch(e) {}
+
         addToCart(product.id);
-        toast(`Producto escaneado: ${product.nombre}`);
+        toast(`Añadido: ${product.nombre}`);
+        stopScanner();
     } else {
+        // Play error beep
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(300, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.3);
+        } catch(e) {}
+
         resultDiv.style.display = 'block';
         resultDiv.style.background = 'var(--warning-bg)';
         resultDiv.style.color = 'var(--warning)';
         resultDiv.innerHTML = `<i class="fas fa-triangle-exclamation"></i> Código "${escapeHtml(code)}" no encontrado`;
-        toast(`Código "${code}" no coincide con ningún producto.`, 'warning');
-    }
+        toast(`Código "${code}" no coincide.`, 'warning');
 
-    // Allow scanning again after 1.5 seconds
-    setTimeout(() => {
-        scannerActive = true;
-        resultDiv.style.display = 'none';
-    }, 1500);
+        // Allow scanning again after 1.5 seconds if error
+        setTimeout(() => {
+            scannerActive = true;
+            resultDiv.style.display = 'none';
+        }, 1500);
+    }
 }
 
 function stopScanner() {
