@@ -15,11 +15,21 @@ function get_env_var($key, $default = '') {
     return $default;
 }
 
-define('DB_HOST', get_env_var('MYSQLHOST', 'localhost'));
-define('DB_USER', get_env_var('MYSQLUSER', 'root'));
-define('DB_PASS', get_env_var('MYSQLPASSWORD', ''));
-define('DB_NAME', get_env_var('MYSQLDATABASE', 'papeleria_admin'));
-define('DB_PORT', get_env_var('MYSQLPORT', '3306'));
+$mysql_url = get_env_var('MYSQL_URL');
+if ($mysql_url) {
+    $parsed = parse_url($mysql_url);
+    define('DB_HOST', $parsed['host']);
+    define('DB_USER', $parsed['user']);
+    define('DB_PASS', $parsed['pass'] ?? '');
+    define('DB_NAME', ltrim($parsed['path'], '/'));
+    define('DB_PORT', $parsed['port'] ?? '3306');
+} else {
+    define('DB_HOST', get_env_var('MYSQLHOST', 'localhost'));
+    define('DB_USER', get_env_var('MYSQLUSER', 'root'));
+    define('DB_PASS', get_env_var('MYSQLPASSWORD', ''));
+    define('DB_NAME', get_env_var('MYSQLDATABASE', 'papeleria_admin'));
+    define('DB_PORT', get_env_var('MYSQLPORT', '3306'));
+}
 define('DB_CHARSET', 'utf8mb4');
 
 class Database {
