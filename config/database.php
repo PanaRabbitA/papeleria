@@ -7,11 +7,19 @@
  * Automatically creates database, tables, and sample data on first run.
  */
 
-define('DB_HOST', getenv('MYSQLHOST') ?: 'localhost');
-define('DB_USER', getenv('MYSQLUSER') ?: 'root');
-define('DB_PASS', getenv('MYSQLPASSWORD') ?: '');
-define('DB_NAME', getenv('MYSQLDATABASE') ?: 'papeleria_admin');
-define('DB_PORT', getenv('MYSQLPORT') ?: '3306');
+function get_env_var($key, $default = '') {
+    $val = getenv($key);
+    if ($val !== false && $val !== '') return $val;
+    if (isset($_ENV[$key]) && $_ENV[$key] !== '') return $_ENV[$key];
+    if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') return $_SERVER[$key];
+    return $default;
+}
+
+define('DB_HOST', get_env_var('MYSQLHOST', 'localhost'));
+define('DB_USER', get_env_var('MYSQLUSER', 'root'));
+define('DB_PASS', get_env_var('MYSQLPASSWORD', ''));
+define('DB_NAME', get_env_var('MYSQLDATABASE', 'papeleria_admin'));
+define('DB_PORT', get_env_var('MYSQLPORT', '3306'));
 define('DB_CHARSET', 'utf8mb4');
 
 class Database {
