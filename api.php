@@ -38,6 +38,7 @@ try {
         case 'clientes':   handleClientes($pdo, $action);   break;
         case 'ventas':     handleVentas($pdo, $action);     break;
         case 'usuarios':   handleUsuarios($pdo, $action);   break;
+        case 'configuracion': handleConfiguracion($pdo, $action); break;
         default:
             http_response_code(400);
             echo json_encode(['error' => 'Módulo no válido.']);
@@ -111,6 +112,17 @@ function handleDashboard(PDO $pdo, string $action) {
     ");
     $stats['ventas_semana'] = $stmt->fetchAll();
 
+    // Products by category (for pie chart)
+    $stmt = $pdo->query("
+        SELECT c.nombre, COUNT(p.id) as cantidad
+        FROM categorias c
+        LEFT JOIN productos p ON p.categoria_id = c.id AND p.activo = 1
+        WHERE c.activo = 1
+        GROUP BY c.id
+        HAVING cantidad > 0
+    ");
+    $stats['productos_por_categoria'] = $stmt->fetchAll();
+
     echo json_encode($stats);
 }
 
@@ -157,8 +169,9 @@ function handleProductos(PDO $pdo, string $action) {
 
         case 'create':
             $d = $_POST;
-            $stmt = $pdo->prepare("INSERT INTO productos (codigo,nombre,descripcion,categoria_id,proveedor_id,precio_compra,precio_venta,stock,stock_minimo)
-                                   VALUES (?,?,?,?,?,?,?,?,?)");
+            $imagen = !empty($d['imagen']) ? $d['imagen'] : null;
+            $stmt = $pdo->prepare("INSERT INTO productos (codigo,nombre,descripcion,categoria_id,proveedor_id,precio_compra,precio_venta,stock,stock_minimo,imagen)
+                                   VALUES (?,?,?,?,?,?,?,?,?,?)");
             $stmt->execute([
                 Auth::sanitize($d['codigo']),
                 Auth::sanitize($d['nombre']),
@@ -169,25 +182,44 @@ function handleProductos(PDO $pdo, string $action) {
                 (float)$d['precio_venta'],
                 (int)$d['stock'],
                 (int)$d['stock_minimo'],
+                $imagen
             ]);
             echo json_encode(['success' => true, 'id' => $pdo->lastInsertId(), 'message' => 'Producto creado exitosamente.']);
             break;
 
         case 'update':
             $d = $_POST;
-            $stmt = $pdo->prepare("UPDATE productos SET codigo=?,nombre=?,descripcion=?,categoria_id=?,proveedor_id=?,precio_compra=?,precio_venta=?,stock=?,stock_minimo=? WHERE id=?");
-            $stmt->execute([
-                Auth::sanitize($d['codigo']),
-                Auth::sanitize($d['nombre']),
-                Auth::sanitize($d['descripcion'] ?? ''),
-                (int)$d['categoria_id'] ?: null,
-                (int)$d['proveedor_id'] ?: null,
-                (float)$d['precio_compra'],
-                (float)$d['precio_venta'],
-                (int)$d['stock'],
-                (int)$d['stock_minimo'],
-                (int)$d['id'],
-            ]);
+            if (isset($d['imagen_updated']) && $d['imagen_updated'] === 'true') {
+                $imagen = !empty($d['imagen']) ? $d['imagen'] : null;
+                $stmt = $pdo->prepare("UPDATE productos SET codigo=?,nombre=?,descripcion=?,categoria_id=?,proveedor_id=?,precio_compra=?,precio_venta=?,stock=?,stock_minimo=?,imagen=? WHERE id=?");
+                $stmt->execute([
+                    Auth::sanitize($d['codigo']),
+                    Auth::sanitize($d['nombre']),
+                    Auth::sanitize($d['descripcion'] ?? ''),
+                    (int)$d['categoria_id'] ?: null,
+                    (int)$d['proveedor_id'] ?: null,
+                    (float)$d['precio_compra'],
+                    (float)$d['precio_venta'],
+                    (int)$d['stock'],
+                    (int)$d['stock_minimo'],
+                    $imagen,
+                    (int)$d['id'],
+                ]);
+            } else {
+                $stmt = $pdo->prepare("UPDATE productos SET codigo=?,nombre=?,descripcion=?,categoria_id=?,proveedor_id=?,precio_compra=?,precio_venta=?,stock=?,stock_minimo=? WHERE id=?");
+                $stmt->execute([
+                    Auth::sanitize($d['codigo']),
+                    Auth::sanitize($d['nombre']),
+                    Auth::sanitize($d['descripcion'] ?? ''),
+                    (int)$d['categoria_id'] ?: null,
+                    (int)$d['proveedor_id'] ?: null,
+                    (float)$d['precio_compra'],
+                    (float)$d['precio_venta'],
+                    (int)$d['stock'],
+                    (int)$d['stock_minimo'],
+                    (int)$d['id'],
+                ]);
+            }
             echo json_encode(['success' => true, 'message' => 'Producto actualizado.']);
             break;
 
@@ -546,6 +578,32 @@ function handleUsuarios(PDO $pdo, string $action) {
             $stmt = $pdo->prepare("UPDATE usuarios SET activo=0 WHERE id=?");
             $stmt->execute([$id]);
             echo json_encode(['success' => true, 'message' => 'Usuario desactivado.']);
+            break;
+
+        default:
+            http_response_code(400);
+            echo json_encode(['error' => 'Acción no válida.']);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONFIGURACION
+   ═══════════════════════════════════════════════════════════════════ */
+function handleConfiguracion(PDO $pdo, string $action) {
+    switch ($action) {
+        case 'get':
+            $stmt = $pdo->query("SELECT valor FROM configuracion WHERE clave='papeleria_logo'");
+            $logo = $stmt->fetchColumn();
+            echo json_encode(['logo' => $logo ?: '']);
+            break;
+
+        case 'update_logo':
+            Auth::requireAdmin();
+            $logo = $_POST['logo'] ?? '';
+            // Insert or Update the logo
+            $stmt = $pdo->prepare("INSERT INTO configuracion (clave, valor) VALUES ('papeleria_logo', ?) ON DUPLICATE KEY UPDATE valor = ?");
+            $stmt->execute([$logo, $logo]);
+            echo json_encode(['success' => true, 'message' => 'Logo actualizado exitosamente.']);
             break;
 
         default:

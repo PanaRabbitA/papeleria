@@ -61,7 +61,8 @@ class Database {
             $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
             $this->pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
 
-            // Initialize tables if needed
+            // Initialize tables and run migrations
+            $this->runMigrations();
             $this->initializeTables();
 
         } catch (PDOException $e) {
@@ -86,6 +87,27 @@ class Database {
 
     public function getConnection() {
         return $this->pdo;
+    }
+
+    private function runMigrations() {
+        // Create configuracion table
+        $this->pdo->exec("
+            CREATE TABLE IF NOT EXISTS configuracion (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                clave VARCHAR(50) UNIQUE NOT NULL,
+                valor LONGTEXT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        $this->pdo->exec("INSERT IGNORE INTO configuracion (clave, valor) VALUES ('papeleria_logo', '')");
+        
+        // Add imagen column if it doesn't exist
+        $stmt = $this->pdo->query("SHOW TABLES LIKE 'productos'");
+        if ($stmt->rowCount() > 0) {
+            $stmt = $this->pdo->query("SHOW COLUMNS FROM productos LIKE 'imagen'");
+            if ($stmt->rowCount() == 0) {
+                $this->pdo->exec("ALTER TABLE productos ADD COLUMN imagen LONGTEXT NULL");
+            }
+        }
     }
 
     private function initializeTables() {
@@ -147,6 +169,7 @@ class Database {
                 precio_venta DECIMAL(10,2) NOT NULL,
                 stock INT DEFAULT 0,
                 stock_minimo INT DEFAULT 5,
+                imagen LONGTEXT NULL,
                 activo TINYINT(1) DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

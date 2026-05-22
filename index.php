@@ -13,6 +13,10 @@ if (Auth::isAuthenticated()) {
 $error = '';
 $csrfToken = Auth::generateCSRFToken();
 
+$pdo = Database::getInstance()->getConnection();
+$stmt = $pdo->query("SELECT valor FROM configuracion WHERE clave='papeleria_logo'");
+$logoApp = $stmt->fetchColumn();
+
 // Handle login POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!Auth::validateCSRFToken($_POST['csrf_token'] ?? '')) {
@@ -224,9 +228,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="login-wrapper">
     <div class="login-card">
         <div class="login-logo">
-            <div class="icon-circle">
-                <i class="fas fa-store"></i>
-            </div>
+            <?php if (!empty($logoApp)): ?>
+                <div style="width: 120px; height: 120px; margin: 0 auto 1.5rem; border-radius: 12px; background: rgba(255,255,255,0.05); padding: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 30px rgba(0,0,0,0.2);">
+                    <img src="<?= htmlspecialchars($logoApp) ?>" alt="Logo" style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px;">
+                </div>
+            <?php else: ?>
+                <div class="icon-circle">
+                    <i class="fas fa-store"></i>
+                </div>
+            <?php endif; ?>
             <h1>Papelería Admin</h1>
             <p>Sistema de Administración</p>
         </div>

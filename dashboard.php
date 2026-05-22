@@ -13,6 +13,10 @@ $userName  = Auth::sanitize($_SESSION['nombre'] ?? '');
 $userRole  = Auth::sanitize($_SESSION['rol'] ?? '');
 $isAdmin   = Auth::isAdmin();
 $initials  = mb_strtoupper(mb_substr($userName, 0, 2));
+
+$pdo = Database::getInstance()->getConnection();
+$stmt = $pdo->query("SELECT valor FROM configuracion WHERE clave='papeleria_logo'");
+$logoApp = $stmt->fetchColumn();
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -26,6 +30,7 @@ $initials  = mb_strtoupper(mb_substr($userName, 0, 2));
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/style.css">
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 <div class="app-layout" id="app">
@@ -33,7 +38,13 @@ $initials  = mb_strtoupper(mb_substr($userName, 0, 2));
     <!-- ── Sidebar ────────────────────────────────────────────── -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
-            <div class="brand-icon"><i class="fas fa-store"></i></div>
+            <div class="brand-icon">
+                <?php if ($logoApp): ?>
+                    <img src="<?= htmlspecialchars($logoApp) ?>" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:var(--radius-sm)">
+                <?php else: ?>
+                    <i class="fas fa-store"></i>
+                <?php endif; ?>
+            </div>
             <div class="brand-text">
                 <h2>Papelería</h2>
                 <span>Sistema Admin</span>
@@ -75,6 +86,9 @@ $initials  = mb_strtoupper(mb_substr($userName, 0, 2));
             <div class="nav-section">Administración</div>
             <div class="nav-item" data-module="usuarios" id="nav-usuarios">
                 <i class="fas fa-user-shield"></i> Usuarios
+            </div>
+            <div class="nav-item" data-module="configuracion" id="nav-configuracion">
+                <i class="fas fa-cog"></i> Configuración
             </div>
             <?php endif; ?>
         </nav>
@@ -284,6 +298,7 @@ const pageTitles = {
     ventas: 'Punto de Venta',
     historial: 'Historial de Ventas',
     usuarios: 'Gestión de Usuarios',
+    configuracion: 'Configuración General',
 };
 
 let currentModule = 'dashboard';
@@ -308,6 +323,7 @@ function navigate(module) {
         ventas: loadVentas,
         historial: loadHistorial,
         usuarios: loadUsuarios,
+        configuracion: loadConfiguracion,
     };
     const loader = loaders[module];
     if (loader) loader();
@@ -391,6 +407,25 @@ async function loadDashboard() {
             </div>
         </div>
 
+        <div class="grid-2" style="margin-bottom: 1.5rem">
+            <div class="data-card">
+                <div class="data-card-header">
+                    <h3><i class="fas fa-chart-bar"></i> Ventas (Últimos 7 días)</h3>
+                </div>
+                <div class="table-wrapper" style="padding: 1rem;">
+                    <canvas id="chart-ventas" height="250"></canvas>
+                </div>
+            </div>
+            <div class="data-card">
+                <div class="data-card-header">
+                    <h3><i class="fas fa-chart-pie"></i> Productos por Categoría</h3>
+                </div>
+                <div class="table-wrapper" style="padding: 1rem;">
+                    <canvas id="chart-categorias" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+
         <div class="grid-2">
             <div class="data-card">
                 <div class="data-card-header">
@@ -441,6 +476,40 @@ async function loadDashboard() {
             </div>
         </div>
     </div>`;
+
+    // Render charts
+    if (data.ventas_semana && data.ventas_semana.length > 0) {
+        new Chart(document.getElementById('chart-ventas').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: data.ventas_semana.map(v => v.fecha),
+                datasets: [{
+                    label: 'Ingresos ($)',
+                    data: data.ventas_semana.map(v => v.ingresos),
+                    backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                    borderColor: 'rgba(99, 102, 241, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    if (data.productos_por_categoria && data.productos_por_categoria.length > 0) {
+        new Chart(document.getElementById('chart-categorias').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: data.productos_por_categoria.map(c => c.nombre),
+                datasets: [{
+                    data: data.productos_por_categoria.map(c => c.cantidad),
+                    backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#3b82f6', '#14b8a6', '#f97316', '#ec4899', '#64748b'],
+                    borderWidth: 0
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -478,7 +547,7 @@ async function loadProductos() {
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Código</th><th>Producto</th><th>Categoría</th><th>P. Compra</th>
+                            <th style="width:60px">Foto</th><th>Código</th><th>Producto</th><th>Categoría</th><th>P. Compra</th>
                             <th>P. Venta</th><th>Stock</th><th>Acciones</th>
                         </tr>
                     </thead>
@@ -518,6 +587,9 @@ function renderProductTable(products) {
     }
     tbody.innerHTML = products.map(p => `
         <tr>
+            <td>
+                ${p.imagen ? `<img src="${p.imagen}" style="width:40px;height:40px;object-fit:cover;border-radius:4px">` : `<div style="width:40px;height:40px;background:var(--bg-tertiary);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--text-muted)"><i class="fas fa-image"></i></div>`}
+            </td>
             <td class="cell-code">${escapeHtml(p.codigo)}</td>
             <td><strong>${escapeHtml(p.nombre)}</strong><br><small style="color:var(--text-muted)">${escapeHtml(p.descripcion || '')}</small></td>
             <td><span class="badge-status info">${escapeHtml(p.categoria_nombre)}</span></td>
@@ -543,6 +615,19 @@ function openProductForm(id) {
     const formHtml = `
         <form id="product-form">
             <input type="hidden" name="id" id="pf-id" value="">
+            <div class="form-row" style="margin-bottom:1rem">
+                <div class="form-group" style="flex:1">
+                    <label>Foto del Producto</label>
+                    <input type="file" accept="image/*" class="form-control" onchange="previewProdImage(event)">
+                    <input type="hidden" name="imagen" id="pf-imagen-b64">
+                    <input type="hidden" name="imagen_updated" id="pf-imagen-updated" value="false">
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.5rem">La imagen se redimensionará automáticamente.</p>
+                </div>
+                <div style="width:100px;height:100px;border:1px dashed var(--border);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg-secondary)">
+                    <img id="pf-imagen-preview" src="" style="max-width:100%;max-height:100%;display:none">
+                    <i id="pf-imagen-icon" class="fas fa-image" style="color:var(--text-muted);font-size:2rem"></i>
+                </div>
+            </div>
             <div class="form-row">
                 <div class="form-group">
                     <label for="pf-codigo">Código *</label>
@@ -619,8 +704,42 @@ function openProductForm(id) {
             $('#pf-precio-venta').value = p.precio_venta;
             $('#pf-stock').value = p.stock;
             $('#pf-stock-min').value = p.stock_minimo;
+            
+            if (p.imagen) {
+                $('#pf-imagen-preview').src = p.imagen;
+                $('#pf-imagen-preview').style.display = 'block';
+                $('#pf-imagen-icon').style.display = 'none';
+                $('#pf-imagen-b64').value = p.imagen;
+            }
         });
     }
+}
+
+function previewProdImage(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const maxW = 500, maxH = 500;
+            let width = img.width, height = img.height;
+            if (width > height) { if (width > maxW) { height *= maxW / width; width = maxW; } }
+            else { if (height > maxH) { width *= maxH / height; height = maxH; } }
+            canvas.width = width; canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            $('#pf-imagen-b64').value = dataUrl;
+            $('#pf-imagen-updated').value = 'true';
+            $('#pf-imagen-preview').src = dataUrl;
+            $('#pf-imagen-preview').style.display = 'block';
+            $('#pf-imagen-icon').style.display = 'none';
+        }
+        img.src = e.target.result;
+    }
+    reader.readAsDataURL(file);
 }
 
 async function saveProduct() {
@@ -1513,6 +1632,86 @@ $('#scanner-overlay').addEventListener('click', e => {
 /* ═══════════════════════════════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   MODULE: CONFIGURACION
+   ═══════════════════════════════════════════════════════════════════ */
+async function loadConfiguracion() {
+    const c = $('#page-content');
+    c.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Cargando…</div>';
+    
+    const data = await api('configuracion', 'get');
+
+    c.innerHTML = `
+    <div class="fade-in">
+        <div class="data-card" style="max-width: 600px; margin: 0 auto;">
+            <div class="data-card-header">
+                <h3><i class="fas fa-cog"></i> Configuración General</h3>
+            </div>
+            <div style="padding: 2rem;">
+                <form id="config-form" onsubmit="event.preventDefault(); saveConfig();">
+                    <div class="form-group">
+                        <label>Logo de la Papelería</label>
+                        <div style="display:flex;gap:1rem;align-items:center;margin-top:.5rem">
+                            <div style="width:100px;height:100px;border:1px dashed var(--border);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg-secondary)">
+                                <img id="cfg-logo-preview" src="${data.logo || ''}" style="max-width:100%;max-height:100%;display:${data.logo ? 'block' : 'none'}">
+                                <i id="cfg-logo-icon" class="fas fa-store" style="color:var(--text-muted);font-size:2rem;display:${data.logo ? 'none' : 'block'}"></i>
+                            </div>
+                            <div style="flex:1">
+                                <input type="file" accept="image/*" class="form-control" onchange="previewLogo(event)">
+                                <input type="hidden" name="logo" id="cfg-logo-b64" value="${data.logo || ''}">
+                                <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.5rem">Sube una imagen cuadrada (PNG o JPG). Se redimensionará automáticamente.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <hr style="border:none;border-top:1px solid var(--border);margin:2rem 0">
+                    <div style="text-align:right">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Guardar Cambios</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>`;
+}
+
+function previewLogo(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const maxW = 300, maxH = 300;
+            let width = img.width, height = img.height;
+            if (width > height) { if (width > maxW) { height *= maxW / width; width = maxW; } }
+            else { if (height > maxH) { width *= maxH / height; height = maxH; } }
+            canvas.width = width; canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/png');
+            $('#cfg-logo-b64').value = dataUrl;
+            $('#cfg-logo-preview').src = dataUrl;
+            $('#cfg-logo-preview').style.display = 'block';
+            $('#cfg-logo-icon').style.display = 'none';
+        }
+        img.src = e.target.result;
+    }
+    reader.readAsDataURL(file);
+}
+
+async function saveConfig() {
+    const logo = $('#cfg-logo-b64').value;
+    const res = await api('configuracion', 'update_logo', { logo }, 'POST');
+    if (res.success) {
+        toast(res.message);
+        setTimeout(() => location.reload(), 1000); // Reload to apply logo everywhere
+    } else {
+        toast(res.error || 'Error.', 'error');
+    }
+}
+
+// Initial Navigation
 navigate('dashboard');
 </script>
 </body>
