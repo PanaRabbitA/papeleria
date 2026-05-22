@@ -1,0 +1,10 @@
+{
+    "name": "papeleria/admin",
+    "description": "Sistema de Administracion Papeleria",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*"
+    }
+}
