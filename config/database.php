@@ -108,6 +108,17 @@ class Database {
                 $this->pdo->exec("ALTER TABLE productos ADD COLUMN imagen LONGTEXT NULL");
             }
         }
+        
+        // Add email and token columns to usuarios if they don't exist
+        $stmt = $this->pdo->query("SHOW TABLES LIKE 'usuarios'");
+        if ($stmt->rowCount() > 0) {
+            $stmt = $this->pdo->query("SHOW COLUMNS FROM usuarios LIKE 'email'");
+            if ($stmt->rowCount() == 0) {
+                $this->pdo->exec("ALTER TABLE usuarios ADD COLUMN email VARCHAR(100) UNIQUE NULL");
+                $this->pdo->exec("ALTER TABLE usuarios ADD COLUMN reset_token VARCHAR(64) NULL");
+                $this->pdo->exec("ALTER TABLE usuarios ADD COLUMN reset_token_expiry DATETIME NULL");
+            }
+        }
     }
 
     private function initializeTables() {
@@ -122,11 +133,14 @@ class Database {
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
+                email VARCHAR(100) UNIQUE NULL,
                 nombre VARCHAR(100) NOT NULL,
                 rol ENUM('admin', 'vendedor') DEFAULT 'vendedor',
                 activo TINYINT(1) DEFAULT 1,
                 intentos_fallidos INT DEFAULT 0,
                 ultimo_intento DATETIME NULL,
+                reset_token VARCHAR(64) NULL,
+                reset_token_expiry DATETIME NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4

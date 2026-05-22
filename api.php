@@ -12,12 +12,13 @@ header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 
-require_once __DIR__ . '/includes/auth.php';
-Auth::requireAuth();
-
 $pdo    = Database::getInstance()->getConnection();
 $module = $_GET['module'] ?? '';
 $action = $_GET['action'] ?? '';
+
+if ($module !== 'auth') {
+    Auth::requireAuth();
+}
 
 // CSRF on mutation requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -39,6 +40,7 @@ try {
         case 'ventas':     handleVentas($pdo, $action);     break;
         case 'usuarios':   handleUsuarios($pdo, $action);   break;
         case 'configuracion': handleConfiguracion($pdo, $action); break;
+        case 'auth':       handleAuth($pdo, $action);       break;
         default:
             http_response_code(400);
             echo json_encode(['error' => 'Módulo no válido.']);
@@ -533,16 +535,17 @@ function handleUsuarios(PDO $pdo, string $action) {
 
     switch ($action) {
         case 'list':
-            $stmt = $pdo->query("SELECT id,username,nombre,rol,activo,created_at FROM usuarios ORDER BY nombre ASC");
+            $stmt = $pdo->query("SELECT id,username,email,nombre,rol,activo,created_at FROM usuarios ORDER BY nombre ASC");
             echo json_encode($stmt->fetchAll());
             break;
 
         case 'create':
             $pass = password_hash($_POST['password'], PASSWORD_BCRYPT, ['cost' => 12]);
-            $stmt = $pdo->prepare("INSERT INTO usuarios (username,password,nombre,rol) VALUES (?,?,?,?)");
+            $stmt = $pdo->prepare("INSERT INTO usuarios (username,password,email,nombre,rol) VALUES (?,?,?,?,?)");
             $stmt->execute([
                 Auth::sanitize($_POST['username']),
                 $pass,
+                Auth::sanitize($_POST['email'] ?? ''),
                 Auth::sanitize($_POST['nombre']),
                 in_array($_POST['rol'], ['admin','vendedor']) ? $_POST['rol'] : 'vendedor',
             ]);
@@ -550,9 +553,10 @@ function handleUsuarios(PDO $pdo, string $action) {
             break;
 
         case 'update':
-            $fields = "nombre=?, rol=?, activo=?";
+            $fields = "nombre=?, email=?, rol=?, activo=?";
             $params = [
                 Auth::sanitize($_POST['nombre']),
+                Auth::sanitize($_POST['email'] ?? ''),
                 in_array($_POST['rol'], ['admin','vendedor']) ? $_POST['rol'] : 'vendedor',
                 (int)$_POST['activo'],
             ];
@@ -609,5 +613,113 @@ function handleConfiguracion(PDO $pdo, string $action) {
         default:
             http_response_code(400);
             echo json_encode(['error' => 'Acción no válida.']);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   AUTH (Public endpoints for password recovery)
+   ═══════════════════════════════════════════════════════════════════ */
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+function handleAuth(PDO $pdo, string $action) {
+    switch ($action) {
+        case 'forgot_password':
+            $email = trim($_POST['email'] ?? '');
+            if (!$email) {
+                echo json_encode(['error' => 'Debe proporcionar un correo electrónico.']);
+                return;
+            }
+
+            $stmt = $pdo->prepare("SELECT id, nombre FROM usuarios WHERE email=? AND activo=1");
+            $stmt->execute([$email]);
+            $user = $stmt->fetch();
+
+            if (!$user) {
+                // Return success to prevent email enumeration attacks
+                echo json_encode(['success' => true, 'message' => 'Si el correo existe, se ha enviado un enlace.']);
+                return;
+            }
+
+            $token = bin2hex(random_bytes(32));
+            $expiry = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+            $stmt = $pdo->prepare("UPDATE usuarios SET reset_token=?, reset_token_expiry=? WHERE id=?");
+            $stmt->execute([$token, $expiry, $user['id']]);
+
+            // Load Composer's autoloader for PHPMailer
+            if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+                require_once __DIR__ . '/vendor/autoload.php';
+            } else {
+                echo json_encode(['error' => 'No se encontró PHPMailer. Ejecute composer install.']);
+                return;
+            }
+
+            $mail = new PHPMailer(true);
+            try {
+                // Server settings
+                $mail->isSMTP();
+                $mail->Host       = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+                $mail->SMTPAuth   = true;
+                $mail->Username   = getenv('SMTP_USER') ?: 'tu_correo@gmail.com';
+                $mail->Password   = getenv('SMTP_PASS') ?: 'tu_contraseña';
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                $mail->Port       = getenv('SMTP_PORT') ?: 587;
+                $mail->CharSet    = 'UTF-8';
+
+                // Recipients
+                $mail->setFrom($mail->Username, 'Papelería Admin');
+                $mail->addAddress($email, $user['nombre']);
+
+                // Content
+                $resetUrl = "https://" . $_SERVER['HTTP_HOST'] . "/reset.php?token=" . $token;
+                
+                $mail->isHTML(true);
+                $mail->Subject = 'Restablecer Contraseña - Papelería Admin';
+                $mail->Body    = "
+                    <h2>Hola, {$user['nombre']}</h2>
+                    <p>Has solicitado restablecer tu contraseña en el sistema de Papelería Admin.</p>
+                    <p>Haz clic en el siguiente enlace para crear una nueva contraseña. Este enlace expira en 1 hora.</p>
+                    <p><a href='{$resetUrl}' style='padding: 10px 20px; background-color: #6c5ce7; color: white; text-decoration: none; border-radius: 5px; display: inline-block;'>Restablecer Contraseña</a></p>
+                    <p>Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+                    <p>{$resetUrl}</p>
+                    <p><small>Si no solicitaste este cambio, puedes ignorar este correo.</small></p>
+                ";
+
+                $mail->send();
+                echo json_encode(['success' => true, 'message' => 'Se ha enviado un enlace de recuperación a tu correo.']);
+            } catch (Exception $e) {
+                echo json_encode(['error' => "El correo no pudo ser enviado. Verifique la configuración SMTP. Mailer Error: {$mail->ErrorInfo}"]);
+            }
+            break;
+
+        case 'reset_password':
+            $token = $_POST['token'] ?? '';
+            $password = $_POST['password'] ?? '';
+
+            if (!$token || !$password || strlen($password) < 6) {
+                echo json_encode(['error' => 'Datos inválidos o la contraseña es muy corta.']);
+                return;
+            }
+
+            $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE reset_token=? AND reset_token_expiry > NOW() AND activo=1");
+            $stmt->execute([$token]);
+            $user = $stmt->fetch();
+
+            if (!$user) {
+                echo json_encode(['error' => 'El enlace es inválido o ha expirado.']);
+                return;
+            }
+
+            $passHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+            $stmt = $pdo->prepare("UPDATE usuarios SET password=?, reset_token=NULL, reset_token_expiry=NULL WHERE id=?");
+            $stmt->execute([$passHash, $user['id']]);
+
+            echo json_encode(['success' => true, 'message' => 'Tu contraseña ha sido actualizada con éxito.']);
+            break;
+
+        default:
+            http_response_code(400);
+            echo json_encode(['error' => 'Acción no válida en auth.']);
     }
 }

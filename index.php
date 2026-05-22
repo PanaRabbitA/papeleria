@@ -221,6 +221,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: var(--text-muted);
         }
         .login-footer strong { color: var(--text-secondary); }
+
+        /* Forgot password modal inside login card */
+        #forgot-form-container {
+            display: none;
+            animation: cardIn .3s ease-out;
+        }
+        .text-center { text-align: center; }
+        .mt-3 { margin-top: 1rem; }
+        .text-sm { font-size: 0.85rem; }
+        .text-muted { color: var(--text-muted); }
+        a.forgot-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+            cursor: pointer;
+        }
+        a.forgot-link:hover { color: #8B5CF6; }
     </style>
 </head>
 <body class="login-body">
@@ -272,10 +290,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" class="login-btn" id="login-btn">
                 <i class="fas fa-sign-in-alt"></i> &nbsp;Iniciar Sesión
             </button>
+            <div class="text-center mt-3 text-sm">
+                <a class="forgot-link" onclick="toggleForgot(true)">¿Olvidaste tu contraseña?</a>
+            </div>
         </form>
+
+        <div id="forgot-form-container">
+            <h3 style="color:#fff; margin-bottom:0.5rem; text-align:center;">Recuperar Contraseña</h3>
+            <p class="text-muted text-center text-sm" style="margin-bottom:1.5rem;">Ingresa el correo electrónico asociado a tu cuenta. Te enviaremos un enlace para restablecerla.</p>
+            
+            <form id="forgot-form" onsubmit="event.preventDefault(); submitForgot();">
+                <div class="login-field">
+                    <label for="forgot-email">Correo Electrónico</label>
+                    <div class="input-wrap">
+                        <input type="email" id="forgot-email" placeholder="ejemplo@correo.com" required>
+                        <i class="fas fa-envelope"></i>
+                    </div>
+                </div>
+                <button type="submit" class="login-btn" id="forgot-btn">
+                    <i class="fas fa-paper-plane"></i> &nbsp;Enviar Enlace
+                </button>
+                <div class="text-center mt-3 text-sm">
+                    <a class="forgot-link" onclick="toggleForgot(false)">Volver al Inicio de Sesión</a>
+                </div>
+            </form>
+            <div id="forgot-msg" style="margin-top:1rem;font-size:0.85rem;text-align:center;display:none;"></div>
+        </div>
 
     </div>
 </div>
+
+<script>
+    function toggleForgot(show) {
+        document.getElementById('login-form').style.display = show ? 'none' : 'block';
+        document.getElementById('forgot-form-container').style.display = show ? 'block' : 'none';
+        document.getElementById('forgot-msg').style.display = 'none';
+        if (show) document.getElementById('login-error')?.remove();
+    }
+
+    async function submitForgot() {
+        const btn = document.getElementById('forgot-btn');
+        const msgDiv = document.getElementById('forgot-msg');
+        const email = document.getElementById('forgot-email').value;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> &nbsp;Enviando...';
+
+        try {
+            const fd = new FormData();
+            fd.append('email', email);
+            fd.append('csrf_token', '<?= $csrfToken ?>');
+            
+            const res = await fetch('api.php?module=auth&action=forgot_password', {
+                method: 'POST',
+                body: fd
+            });
+            const data = await res.json();
+            
+            msgDiv.style.display = 'block';
+            if (data.success) {
+                msgDiv.style.color = '#10b981'; // success
+                msgDiv.innerHTML = '<i class="fas fa-check-circle"></i> ' + data.message;
+                document.getElementById('forgot-email').value = '';
+            } else {
+                msgDiv.style.color = '#ef4444'; // danger
+                msgDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' + (data.error || 'Error al enviar');
+            }
+        } catch (e) {
+            msgDiv.style.display = 'block';
+            msgDiv.style.color = '#ef4444';
+            msgDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error de conexión';
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> &nbsp;Enviar Enlace';
+    }
+</script>
 
 </body>
 </html>

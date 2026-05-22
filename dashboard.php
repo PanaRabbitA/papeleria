@@ -1350,7 +1350,7 @@ async function loadUsuarios() {
                     <tbody>
                         ${data.map(u => `
                             <tr>
-                                <td class="cell-code">${escapeHtml(u.username)}</td>
+                                <td class="cell-code">${escapeHtml(u.username)}<br><small style="color:var(--text-muted);font-weight:normal">${escapeHtml(u.email || 'Sin correo')}</small></td>
                                 <td><strong>${escapeHtml(u.nombre)}</strong></td>
                                 <td><span class="badge-status ${u.rol === 'admin' ? 'warning' : 'info'}">${u.rol}</span></td>
                                 <td><span class="badge-status ${u.activo == 1 ? 'success' : 'danger'}">${u.activo == 1 ? 'Activo' : 'Inactivo'}</span></td>
@@ -1381,9 +1381,13 @@ function openUserForm(u = null) {
                     <input class="form-control" name="username" value="${escapeHtml(u?.username || '')}" ${isEdit ? 'readonly' : 'required'} maxlength="50">
                 </div>
                 <div class="form-group">
-                    <label>Nombre Completo *</label>
-                    <input class="form-control" name="nombre" value="${escapeHtml(u?.nombre || '')}" required maxlength="100">
+                    <label>Correo Electrónico</label>
+                    <input class="form-control" type="email" name="email" value="${escapeHtml(u?.email || '')}" maxlength="100" placeholder="Para recuperar contraseña">
                 </div>
+            </div>
+            <div class="form-group">
+                <label>Nombre Completo *</label>
+                <input class="form-control" name="nombre" value="${escapeHtml(u?.nombre || '')}" required maxlength="100">
             </div>
             <div class="form-row">
                 <div class="form-group">
