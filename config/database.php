@@ -19,7 +19,14 @@ $mysql_url = get_env_var('MYSQL_URL');
 if ($mysql_url) {
     $parsed = parse_url($mysql_url);
     define('DB_HOST', $parsed['host']);
-    define('DB_USER', $parsed['user']);
+    
+    // Fix Railway's internal bug where it fails to expand MYSQLUSER reference
+    $user = $parsed['user'] ?? 'root';
+    if (strpos($user, '${') !== false) {
+        $user = 'root';
+    }
+    define('DB_USER', $user);
+    
     define('DB_PASS', $parsed['pass'] ?? '');
     define('DB_NAME', ltrim($parsed['path'], '/'));
     define('DB_PORT', $parsed['port'] ?? '3306');
