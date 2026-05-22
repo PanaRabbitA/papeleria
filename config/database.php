@@ -49,7 +49,14 @@ class Database {
 
         } catch (PDOException $e) {
             http_response_code(500);
-            die(json_encode(['error' => 'Error de conexión a la base de datos. Asegúrese de que XAMPP/MySQL esté ejecutándose.']));
+            die(json_encode([
+                'error' => 'Error de conexión a la base de datos.',
+                'details' => $e->getMessage(),
+                'host' => DB_HOST,
+                'port' => DB_PORT,
+                'user' => DB_USER,
+                'dbname' => DB_NAME
+            ]));
         }
     }
 
