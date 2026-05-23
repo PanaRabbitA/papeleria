@@ -666,8 +666,12 @@ function handleAuth(PDO $pdo, string $action) {
                 $mail->SMTPAuth   = true;
                 $mail->Username   = getenv('SMTP_USER') ?: 'tu_correo@gmail.com';
                 $mail->Password   = getenv('SMTP_PASS') ?: 'tu_contraseña';
-                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                $mail->Port       = getenv('SMTP_PORT') ?: 587;
+                
+                $port = getenv('SMTP_PORT') ?: 587;
+                $mail->SMTPSecure = ($port == 465) ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+                $mail->Port       = $port;
+                $mail->Timeout    = 5; // Timeout rápido de 5 segundos para evitar que la página se quede congelada
+                
                 $mail->CharSet    = 'UTF-8';
 
                 // Recipients
