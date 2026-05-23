@@ -3,9 +3,9 @@ FROM php:8.2-apache
 # Habilitar mod_rewrite de Apache para URLs amigables
 RUN a2enmod rewrite
 
-# Instalar las extensiones de PHP necesarias (PostgreSQL)
-RUN apt-get update && apt-get install -y libpq-dev \
-    && docker-php-ext-install pdo pdo_pgsql
+# Instalar dependencias del sistema y extensiones de PHP (PostgreSQL, unzip para Composer)
+RUN apt-get update && apt-get install -y libpq-dev unzip git libzip-dev \
+    && docker-php-ext-install pdo pdo_pgsql zip
 
 # Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
