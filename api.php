@@ -672,6 +672,15 @@ function handleAuth(PDO $pdo, string $action) {
                 $mail->Port       = $port;
                 $mail->Timeout    = 5; // Timeout rápido de 5 segundos para evitar que la página se quede congelada
                 
+                // Ignorar verificación de certificados SSL (útil en contenedores Docker donde faltan los CA certs)
+                $mail->SMTPOptions = [
+                    'ssl' => [
+                        'verify_peer' => false,
+                        'verify_peer_name' => false,
+                        'allow_self_signed' => true
+                    ]
+                ];
+                
                 $mail->CharSet    = 'UTF-8';
 
                 // Recipients
