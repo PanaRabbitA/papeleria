@@ -71,7 +71,7 @@ function handleDashboard(PDO $pdo, string $action) {
     $stats['stock_bajo'] = (int)$pdo->query("SELECT COUNT(*) FROM productos WHERE activo=1 AND stock <= stock_minimo")->fetchColumn();
 
     // Today's sales
-    $stmt = $pdo->query("SELECT COUNT(*) as total_ventas, COALESCE(SUM(total),0) as ingresos FROM ventas WHERE DATE(created_at)=CURRENT_DATE AND estado='completada'");
+    $stmt = $pdo->query("SELECT COUNT(*) as total_ventas, COALESCE(SUM(total),0) as ingresos FROM ventas WHERE CAST(created_at AS DATE)=CURRENT_DATE AND estado='completada'");
     $row = $stmt->fetch();
     $stats['ventas_hoy']   = (int)$row['total_ventas'];
     $stats['ingresos_hoy'] = (float)$row['ingresos'];
@@ -108,10 +108,10 @@ function handleDashboard(PDO $pdo, string $action) {
 
     // Sales last 7 days (for chart)
     $stmt = $pdo->query("
-        SELECT DATE(created_at) as fecha, COUNT(*) as num_ventas, SUM(total) as ingresos
+        SELECT CAST(created_at AS DATE) as fecha, COUNT(*) as num_ventas, SUM(total) as ingresos
         FROM ventas
         WHERE estado='completada' AND created_at >= CURRENT_DATE - INTERVAL '7 days'
-        GROUP BY DATE(created_at)
+        GROUP BY CAST(created_at AS DATE)
         ORDER BY fecha ASC
     ");
     $stats['ventas_semana'] = $stmt->fetchAll();
@@ -122,8 +122,8 @@ function handleDashboard(PDO $pdo, string $action) {
         FROM categorias c
         LEFT JOIN productos p ON p.categoria_id = c.id AND p.activo = 1
         WHERE c.activo = 1
-        GROUP BY c.id
-        HAVING cantidad > 0
+        GROUP BY c.id, c.nombre
+        HAVING COUNT(p.id) > 0
     ");
     $stats['productos_por_categoria'] = $stmt->fetchAll();
 
