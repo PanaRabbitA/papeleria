@@ -110,7 +110,7 @@ function handleDashboard(PDO $pdo, string $action) {
     $stmt = $pdo->query("
         SELECT DATE(created_at) as fecha, COUNT(*) as num_ventas, SUM(total) as ingresos
         FROM ventas
-        WHERE estado='completada' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        WHERE estado='completada' AND created_at >= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY DATE(created_at)
         ORDER BY fecha ASC
     ");

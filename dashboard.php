@@ -724,13 +724,13 @@ function previewProdImage(event) {
         img.onload = function() {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            const maxW = 500, maxH = 500;
+            const maxW = 400, maxH = 400;
             let width = img.width, height = img.height;
             if (width > height) { if (width > maxW) { height *= maxW / width; width = maxW; } }
             else { if (height > maxH) { width *= maxH / height; height = maxH; } }
             canvas.width = width; canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
             $('#pf-imagen-b64').value = dataUrl;
             $('#pf-imagen-updated').value = 'true';
             $('#pf-imagen-preview').src = dataUrl;
@@ -1718,7 +1718,7 @@ function previewLogo(event) {
             else { if (height > maxH) { width *= maxH / height; height = maxH; } }
             canvas.width = width; canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/png');
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
             $('#cfg-logo-b64').value = dataUrl;
             $('#cfg-logo-preview').src = dataUrl;
             $('#cfg-logo-preview').style.display = 'block';
